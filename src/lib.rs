@@ -40,13 +40,8 @@ impl LinearMapVectorCommitment {
         let tau = Field::rand(&mut rng);
 
         let lagrange_polynomials = calculate_lagrange_polynomials(m, &roots_of_unity);
-        let mut g1_lambdas: Vec<G1> = Vec::with_capacity(m as usize);
-        let mut g2_lambdas: Vec<G2> = Vec::with_capacity(m as usize);
-        for i in 0..m as usize {
-            let lambda = lagrange_polynomials[i].evaluate(&tau);
-            g1_lambdas.push(G1::generator() * lambda);
-            g2_lambdas.push(G2::generator() * lambda);
-        }
+        let g1_lambdas = calculate_g1_lambdas(&lagrange_polynomials, tau);
+        let g2_lambdas = calculate_g2_lambdas(&lagrange_polynomials, tau);
         Self {
             m,
             tau,
@@ -56,7 +51,7 @@ impl LinearMapVectorCommitment {
                 g1_tau_powers: calculate_g1_tau_powers(tau, 2*m),
                 g2_tau_powers: calculate_g2_tau_powers(tau, 2*m),
                 g1_lambdas,
-                g2_lambdas,
+                g2_lambdas
             }
         }
     }
@@ -193,6 +188,24 @@ fn calculate_lagrange_polynomials(m: u64, roots_of_unity: &Vec<Field>) -> Vec<De
         polynomials.push(p);
     }
     polynomials
+}
+
+fn calculate_g1_lambdas(lagrange_polynomials: &Vec<DensePolynomial<Field>>, tau: Field) -> Vec<G1> {
+    let mut lambdas: Vec<G1> = Vec::with_capacity(lagrange_polynomials.len());
+    for lagrange_polynomial in lagrange_polynomials {
+        let lambda = lagrange_polynomial.evaluate(&tau);
+        lambdas.push(G1::generator() * lambda);
+    }
+    lambdas
+}
+
+fn calculate_g2_lambdas(lagrange_polynomials: &Vec<DensePolynomial<Field>>, tau: Field) -> Vec<G2> {
+    let mut lambdas: Vec<G2> = Vec::with_capacity(lagrange_polynomials.len());
+    for lagrange_polynomial in lagrange_polynomials {
+        let lambda = lagrange_polynomial.evaluate(&tau);
+        lambdas.push(G2::generator() * lambda);
+    }
+    lambdas
 }
 
 fn inner_product(a: &Vec<Field>, polynomials: &Vec<DensePolynomial<Field>>) -> DensePolynomial<Field> {
