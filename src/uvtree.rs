@@ -1,7 +1,12 @@
-use ark_bls12_381::{Bls12_381, Fr as Field, G1Projective as G1, G2Projective as G2};
-use ark_ec::{Group, pairing::Pairing};
+#![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_imports)]
+use ark_bls12_381::{Fr as Field, G1Projective as G1, G2Projective as G2};
+use ark_ec::Group;
+use ark_ec::pairing::Pairing;
 use ark_ff::Zero;
-use ark_poly::{DenseUVPolynomial, Polynomial, polynomial::univariate::DensePolynomial, univariate::DenseOrSparsePolynomial};
+use ark_poly::Polynomial;
+use ark_poly::polynomial::univariate::DensePolynomial;
 
 use crate::vc::*;
 
@@ -23,7 +28,7 @@ pub struct Proof {
     pub r_hat: G1,
 }
 
-pub struct LinearMapVectorCommitment {
+pub struct UnvariateVectorTreeCommitment {
     m: u64,
     tau: Field, // left for debugging purposes
     vanishing_polynomial: DensePolynomial<Field>,
@@ -31,7 +36,7 @@ pub struct LinearMapVectorCommitment {
     public_parameters: PublicParameters,
 }
 
-impl LinearMapVectorCommitment {
+impl UnvariateVectorTreeCommitment {
 
     pub fn new(m: u64) -> Self {
         assert_eq!(m & (m - 1), 0, "m has to be a power of 2");
@@ -65,43 +70,13 @@ impl LinearMapVectorCommitment {
     }
 
     pub fn open(&self, c: &Commitment, b: Vec<Field>, y: Field) -> Proof {
-        assert_eq!(b.len(), self.m as usize);
-        let a_poly = inner_product(&c.a, &self.lagrange_polynomials);
-        let b_poly = inner_product(&b, &self.lagrange_polynomials);
-        let p = multiply_polynomials(&a_poly, &b_poly);
-        let p_into: DenseOrSparsePolynomial<Field> = p.clone().into();
-        let (h, r) = p_into.divide_with_q_and_r(&self.vanishing_polynomial.clone().into()).unwrap();
-        assert_eq!(r.coeffs[0], y / Field::from(self.m));
-
-        let h_at_tau = self.evaluate_at_g1_tau(&h);
-
-        let r_shifted = DensePolynomial::from_coefficients_slice(&r.coeffs[1..]);
-        assert!(r_shifted.degree() < (self.m - 1) as usize);
-        let r_shifted_at_tau = self.evaluate_at_g1_tau(&r_shifted);
-
-        let mut r_hat_coeffs = vec![Field::zero(), Field::zero()];
-        r_hat_coeffs.append(&mut r_shifted.coeffs.clone());
-        let r_hat = DensePolynomial::from_coefficients_vec(r_hat_coeffs);
-        let r_hat_at_tau = self.evaluate_at_g1_tau(&r_hat);
-
-        Proof {
-            r: r_shifted_at_tau,
-            h: h_at_tau,
-            r_hat: r_hat_at_tau,
-        }
+        unimplemented!()
     }
 
     pub fn verify_opening(&self, c: &Commitment, b: Vec<Field>, y: Field, pi: Proof) -> bool {
-        assert_eq!(b.len(), self.m as usize);
-        let g2_c = self.commit_in_g2(&b);
-
-        let vanishing_at_tau = self.evaluate_at_g2_tau(&self.vanishing_polynomial);
-
-        let cond1 = Bls12_381::pairing(c.c, g2_c) - Bls12_381::pairing(G1::generator() * (y / Field::from(self.m)), G2::generator())
-            == Bls12_381::pairing(pi.r, self.public_parameters.g2_tau_powers[1]) + Bls12_381::pairing(pi.h, vanishing_at_tau);
-        let cond2 = Bls12_381::pairing(pi.r, self.public_parameters.g2_tau_powers[2]) == Bls12_381::pairing(pi.r_hat, G2::generator());
-        return cond1 && cond2;
+        unimplemented!()
     }
+
 
     fn commit_in_g1(&self, a: &Vec<Field>) -> G1 {
         let mut c = G1::zero();
