@@ -38,7 +38,7 @@ impl LinearMapVectorCommitment {
         let roots_of_unity = calculate_roots_of_unity(m);
         let tau = generate_tau();
 
-        let lagrange_polynomials = calculate_lagrange_polynomials(m, &roots_of_unity);
+        let lagrange_polynomials = calculate_lagrange_polynomials(&roots_of_unity);
         let g1_lambdas = calculate_g1_lambdas(&lagrange_polynomials, tau);
         let g2_lambdas = calculate_g2_lambdas(&lagrange_polynomials, tau);
         Self {

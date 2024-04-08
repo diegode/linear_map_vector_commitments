@@ -44,8 +44,8 @@ pub fn calculate_g2_tau_powers(tau: Field, m: u64) -> Vec<G2> {
     tau_powers
 }
 
-pub fn calculate_lagrange_polynomials(m: u64, roots_of_unity: &Vec<Field>) -> Vec<DensePolynomial<Field>> {
-    assert_eq!(roots_of_unity.len(), m as usize);
+pub fn calculate_lagrange_polynomials(roots_of_unity: &Vec<Field>) -> Vec<DensePolynomial<Field>> {
+    let m = roots_of_unity.len();
     let mut polynomials: Vec<DensePolynomial<Field>> = Vec::with_capacity(m as usize);
     for j in 0..m as usize {
         let mut p = DensePolynomial::from_coefficients_vec(vec![Field::one()]);

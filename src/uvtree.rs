@@ -20,7 +20,7 @@ pub struct PublicParameters {
 }
 
 pub struct TreeNode {
-    vector: Vec<Vec<ScalarField>>,
+    vector: Vec<ScalarField>,
     roots_of_unity: Vec<ScalarField>,
 }
 
@@ -63,7 +63,7 @@ impl UnvariateVectorTreeCommitment {
         let roots_of_unity = calculate_roots_of_unity(m);
         let tau = generate_tau();
 
-        let lagrange_polynomials = calculate_lagrange_polynomials(m, &roots_of_unity);
+        let lagrange_polynomials = calculate_lagrange_polynomials(&roots_of_unity);
         let vanishing_polynomial = calculate_vanishing_polynomial(&roots_of_unity);
         let g1_lambdas = calculate_g1_lambdas(&lagrange_polynomials, tau);
         let g2_lambdas = calculate_g2_lambdas(&lagrange_polynomials, tau);
@@ -99,30 +99,24 @@ impl UnvariateVectorTreeCommitment {
         assert_eq!(f.f.len(), 2usize.pow(f.kappa));
         assert!(f.s < 2usize.pow(f.nu));
 
-        let v_b = c.tree.get(&vec![]).unwrap()
-            .vector.get(f.s).unwrap();
-
         let mut h_b_prefixes: Vec<DensePolynomial<ScalarField>> = Vec::with_capacity(f.nu as usize);
         for j in 0..f.nu {
             let b_j: Vec<bool> = (0..=j).map(|i| f.s & (1 << i) != 0).collect();
             let tree_node = c.tree.get(&b_j).unwrap();
-            let roots_of_unity = &tree_node.roots_of_unity;
-            let v_b_j = &tree_node.vector.get(0).unwrap(); // probably this is incorrect
-            let lagrange_polynomials = calculate_lagrange_polynomials(2u64.pow(j), &roots_of_unity);
-            println!("roots_of_unity size {:?}", roots_of_unity.len());
-            println!("v_b_j size {:?}", v_b_j.len());
-            let c_b_j = self.evaluate_at_g1_tau(&inner_product_with_polynomial(&v_b_j, &lagrange_polynomials));
-            let k_b_j = ScalarField::one() / (ScalarField::from(2) * roots_of_unity.last().unwrap()); // assuming roots_of_unity[r-1] is omega^(sr)
+            let lagrange_polynomials = calculate_lagrange_polynomials(&tree_node.roots_of_unity);
+            let c_b_j = self.evaluate_at_g1_tau(&inner_product_with_polynomial(&tree_node.vector, &lagrange_polynomials));
+            let k_b_j = ScalarField::one() / (ScalarField::from(2) * tree_node.roots_of_unity.last().unwrap()); // assuming last root is omega^(sr)
             // h_b_prefixes.push()
         }
 
-        let roots_of_unity = &c.tree.get(&vec![]).unwrap().roots_of_unity;
-        let lagrange_polynomials = calculate_lagrange_polynomials(2u64.pow(f.nu), &roots_of_unity);
-        let vanishing_polynomial = calculate_vanishing_polynomial(&roots_of_unity);
+        let b: Vec<bool> = (0..=f.nu).map(|i| f.s & (1 << i) != 0).collect();
+        let tree_node = &c.tree.get(&b).unwrap();
+        let lagrange_polynomials = calculate_lagrange_polynomials(&tree_node.roots_of_unity);
+        let vanishing_polynomial = calculate_vanishing_polynomial(&tree_node.roots_of_unity);
 
-        let (h_b, r) = calculate_h_and_r(&v_b, &f.f, &lagrange_polynomials, y, &vanishing_polynomial);
+        let (h_b, r) = calculate_h_and_r(&tree_node.vector, &f.f, &lagrange_polynomials, y, &vanishing_polynomial);
         let r_hat = multiply_by_x_power(&r, (self.m + 2 - 2u64.pow(f.kappa)) as usize);
-        let c_b = inner_product_with_polynomial(&v_b, &lagrange_polynomials);
+        let c_b = inner_product_with_polynomial(&tree_node.vector, &lagrange_polynomials);
         let c_hat_b = multiply_by_x_power(&c_b, (self.m - 2u64.pow(f.kappa)) as usize);
         Proof {
             h_b: self.evaluate_at_g1_tau(&h_b),
@@ -150,9 +144,10 @@ impl UnvariateVectorTreeCommitment {
         }
         assert_eq!(cond1_lhs, cond1_rhs);
 
-        let roots_of_unity = &c.tree.get(&vec![]).unwrap().roots_of_unity;
-        let lagrange_polynomials = calculate_lagrange_polynomials(2u64.pow(f.nu), &roots_of_unity);
-        let vanishing_polynomial = calculate_vanishing_polynomial(&roots_of_unity);
+        let b: Vec<bool> = (0..=f.nu).map(|i| f.s & (1 << i) != 0).collect();
+        let tree_node = &c.tree.get(&b).unwrap();
+        let lagrange_polynomials = calculate_lagrange_polynomials(&tree_node.roots_of_unity);
+        let vanishing_polynomial = calculate_vanishing_polynomial(&tree_node.roots_of_unity);
         let c_f = self.evaluate_at_g2_tau(&inner_product_with_polynomial(&f.f, &lagrange_polynomials));
         let vanishing_b_at_tau = self.evaluate_at_g2_tau(&vanishing_polynomial);
 
@@ -226,28 +221,23 @@ impl UnvariateVectorTreeCommitment {
 
     fn build_vector_tree(&self, v: &Vec<ScalarField>, kappa: u32, nu: u32) -> HashMap<Vec<bool>, TreeNode> {
         let mut tree: HashMap<Vec<bool>, TreeNode> = HashMap::new();
-        let mut chunked_vector = Vec::with_capacity(2usize.pow(nu));
-        for i in 0..2usize.pow(nu) {
-            chunked_vector.push(v.iter().cloned()
-                .skip(i * 2usize.pow(kappa))
-                .take(2usize.pow(kappa))
-                .collect());
-        }
-        let roots_of_unity = calculate_roots_of_unity(2u64.pow(kappa));
-        tree.insert(vec![], TreeNode { vector: chunked_vector, roots_of_unity });
-        for level in 1..=nu {
+        tree.insert(vec![], TreeNode {
+            vector: v.clone(),
+            roots_of_unity: self.roots_of_unity.clone()
+        });
+        for level in 1..=(nu + 1) {
             for i in 0..2usize.pow(level) {
                 let mut b = Vec::with_capacity(level as usize);
                 for j in 0..level {
                     b.push(i & (1 << j) != 0);
                 }
                 let parent_node = tree.get(&b[..(level - 1) as usize]).unwrap();
-                let child_vector: Vec<Vec<ScalarField>> = parent_node.vector.iter().cloned()
-                    .skip(if b[(level - 1) as usize] { 1 } else { 0 })
+                let child_vector: Vec<ScalarField> = parent_node.vector.iter().cloned()
+                    .skip(if b[0] { 1 } else { 0 })
                     .step_by(2)
                     .collect();
                 let child_roots_of_unity: Vec<ScalarField> = parent_node.roots_of_unity.iter().cloned()
-                    .skip(if b[(level - 1) as usize] { 1 } else { 0 })
+                    .skip(if b[0] { 1 } else { 0 })
                     .step_by(2)
                     .collect();
                 tree.insert(b, TreeNode { vector: child_vector, roots_of_unity: child_roots_of_unity });
