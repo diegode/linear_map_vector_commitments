@@ -38,7 +38,6 @@ pub struct Function {
 }
 
 pub struct Proof {
-    pub h: G1,
     pub h_b: G1,
     pub h_b_prefixes: Vec<G1>,
     pub r: G1,
@@ -99,14 +98,15 @@ impl UnvariateVectorTreeCommitment {
         assert_eq!(f.f.len(), 2usize.pow(f.kappa));
         assert!(f.s < 2usize.pow(f.nu));
 
-        let mut h_b_prefixes: Vec<DensePolynomial<ScalarField>> = Vec::with_capacity(f.nu as usize);
-        for j in 0..f.nu {
-            let b_j: Vec<bool> = (0..=j).map(|i| f.s & (1 << i) != 0).collect();
-            let tree_node = c.tree.get(&b_j).unwrap();
-            let lagrange_polynomials = calculate_lagrange_polynomials(&tree_node.roots_of_unity);
-            let c_b_j = self.evaluate_at_g1_tau(&inner_product_with_polynomial(&tree_node.vector, &lagrange_polynomials));
-            let k_b_j = ScalarField::one() / (ScalarField::from(2) * tree_node.roots_of_unity.last().unwrap()); // assuming last root is omega^(sr)
-            // h_b_prefixes.push()
+        let mut h_b_prefixes: Vec<G1> = Vec::with_capacity((f.nu + 1) as usize);
+        for j in 0..=f.nu {
+            let b_j: Vec<bool> = (0..j).map(|i| f.s & (1 << i) != 0).collect();
+            let left_child = c.tree.get(&[b_j.clone(), vec![false]].concat()).unwrap();
+            let right_child = c.tree.get(&[b_j.clone(), vec![true]].concat()).unwrap();
+            let last_root_of_unity = *c.tree.get(&b_j).unwrap().roots_of_unity.last().unwrap(); // assuming it is omega^(sr)
+            let k_bj = last_root_of_unity / ScalarField::from(2);
+            let h_bj = (self.calculate_g1_commitment(&left_child) - self.calculate_g1_commitment(&right_child)) * k_bj;
+            h_b_prefixes.push(h_bj);
         }
 
         let b: Vec<bool> = (0..=f.nu).map(|i| f.s & (1 << i) != 0).collect();
@@ -124,8 +124,7 @@ impl UnvariateVectorTreeCommitment {
             r_hat: self.evaluate_at_g1_tau(&r_hat),
             c_b: self.evaluate_at_g1_tau(&c_b),
             c_hat_b: self.evaluate_at_g1_tau(&c_hat_b),
-            h: G1::zero(),
-            h_b_prefixes: vec![G1::zero(); 2],
+            h_b_prefixes: h_b_prefixes,
         }
     }
 
@@ -134,13 +133,12 @@ impl UnvariateVectorTreeCommitment {
         let cond1_lhs = Bls12_381::pairing(c.c - pi.c_b, G2::generator());
 
         let mut cond1_rhs = PairingOutput::zero();
-        let mut previous_h = pi.h;
-        for j in 0..=f.nu {
+        for j in 0..f.nu {
+            let previous_h = pi.h_b_prefixes[j as usize];
             let b_j: Vec<bool> = (0..=j).map(|i| f.s & (1 << i) != 0).collect();
             let roots_of_unity = &c.tree.get(&b_j).unwrap().roots_of_unity;
             let vanishing_bj_at_tau: G2 = self.evaluate_at_g2_tau(&calculate_vanishing_polynomial(&roots_of_unity));
             cond1_rhs += Bls12_381::pairing(previous_h, vanishing_bj_at_tau);
-            previous_h = pi.h_b_prefixes[j as usize];
         }
         assert_eq!(cond1_lhs, cond1_rhs);
 
@@ -244,5 +242,10 @@ impl UnvariateVectorTreeCommitment {
             }
         }
         tree
+    }
+
+    fn calculate_g1_commitment(&self, tree_node: &TreeNode) -> G1 {
+        let lagrange_polynomials = calculate_lagrange_polynomials(&tree_node.roots_of_unity);
+        self.evaluate_at_g1_tau(&inner_product_with_polynomial(&tree_node.vector, &lagrange_polynomials))
     }
 }
