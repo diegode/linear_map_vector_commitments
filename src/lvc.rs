@@ -1,7 +1,7 @@
 use ark_bls12_381::{Bls12_381, Fr as Field, G1Projective as G1, G2Projective as G2};
 use ark_ec::{Group, pairing::Pairing};
 use ark_ff::Zero;
-use ark_poly::{DenseUVPolynomial, Polynomial, polynomial::univariate::DensePolynomial, univariate::DenseOrSparsePolynomial};
+use ark_poly::{Polynomial, polynomial::univariate::DensePolynomial};
 
 use crate::vc::*;
 
@@ -66,26 +66,15 @@ impl LinearMapVectorCommitment {
 
     pub fn open(&self, c: &Commitment, b: Vec<Field>, y: Field) -> Proof {
         assert_eq!(b.len(), self.m as usize);
-        let a_poly = inner_product(&c.a, &self.lagrange_polynomials);
-        let b_poly = inner_product(&b, &self.lagrange_polynomials);
-        let p = multiply_polynomials(&a_poly, &b_poly);
-        let p_into: DenseOrSparsePolynomial<Field> = p.clone().into();
-        let (h, r) = p_into.divide_with_q_and_r(&self.vanishing_polynomial.clone().into()).unwrap();
-        assert_eq!(r.coeffs[0], y / Field::from(self.m));
+        let (h, r) = calculate_h_and_r(&c.a, &b, &self.lagrange_polynomials, y, &self.vanishing_polynomial);
 
         let h_at_tau = self.evaluate_at_g1_tau(&h);
-
-        let r_shifted = DensePolynomial::from_coefficients_slice(&r.coeffs[1..]);
-        assert!(r_shifted.degree() < (self.m - 1) as usize);
-        let r_shifted_at_tau = self.evaluate_at_g1_tau(&r_shifted);
-
-        let mut r_hat_coeffs = vec![Field::zero(), Field::zero()];
-        r_hat_coeffs.append(&mut r_shifted.coeffs.clone());
-        let r_hat = DensePolynomial::from_coefficients_vec(r_hat_coeffs);
+        let r_at_tau = self.evaluate_at_g1_tau(&r);
+        let r_hat = multiply_by_x_power(&r, 2);
         let r_hat_at_tau = self.evaluate_at_g1_tau(&r_hat);
 
         Proof {
-            r: r_shifted_at_tau,
+            r: r_at_tau,
             h: h_at_tau,
             r_hat: r_hat_at_tau,
         }
@@ -108,7 +97,7 @@ impl LinearMapVectorCommitment {
         for i in 0..a.len() {
             c += self.public_parameters.g1_lambdas[i] * a[i];
         }
-        assert_eq!(c, G1::generator() * inner_product(&a, &self.lagrange_polynomials).evaluate(&self.tau));
+        assert_eq!(c, G1::generator() * inner_product_with_polynomial(&a, &self.lagrange_polynomials).evaluate(&self.tau));
         c
     }
 
@@ -117,7 +106,7 @@ impl LinearMapVectorCommitment {
         for i in 0..a.len() {
             c += self.public_parameters.g2_lambdas[i] * a[i];
         }
-        assert_eq!(c, G2::generator() * inner_product(&a, &self.lagrange_polynomials).evaluate(&self.tau));
+        assert_eq!(c, G2::generator() * inner_product_with_polynomial(&a, &self.lagrange_polynomials).evaluate(&self.tau));
         c
     }
 

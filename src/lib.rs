@@ -26,7 +26,13 @@ mod tests {
         let c = uvtree.commit(vec![
             Field::from(1), Field::from(2), Field::from(3), Field::from(4),
             Field::from(5), Field::from(6), Field::from(7), Field::from(8)]);
-        let pi = uvtree.open(&c, vec![Field::one(); 8], Field::from(36));
-        assert!(uvtree.verify_opening(&c, vec![Field::one(); 8], Field::from(36), pi));
+        let f = Function {
+            f: vec![Field::one(), Field::one()],
+            kappa: 1,
+            nu: 1,
+            s: 0
+        };
+        let pi = uvtree.open(&c, f, Field::from(3));
+        assert!(uvtree.verify_opening(&c, vec![Field::one(); 8], Field::from(3), pi));
     }
 }
