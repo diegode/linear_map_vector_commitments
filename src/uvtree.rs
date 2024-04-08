@@ -129,9 +129,28 @@ impl UnvariateVectorTreeCommitment {
     }
 
     pub fn verify_opening(&self, c: &Commitment, f: &Function, y: ScalarField, pi: Proof) -> bool {
+        let cond3_lhs = Bls12_381::pairing(pi.r, self.public_parameters.g2_tau_powers[(self.m + 2 - 2u64.pow(f.kappa)) as usize]);
+        let cond3_rhs = Bls12_381::pairing(pi.r_hat, G2::generator());
+        assert_eq!(cond3_lhs, cond3_rhs);
+
+        let cond4_lhs = Bls12_381::pairing(pi.c_b, self.public_parameters.g2_tau_powers[(self.m - 2u64.pow(f.kappa)) as usize]);
+        let cond4_rhs = Bls12_381::pairing(pi.c_hat_b, G2::generator());
+        assert_eq!(cond4_lhs, cond4_rhs);
+
+        let b: Vec<bool> = (0..=f.nu).map(|i| f.s & (1 << i) != 0).collect();
+        let tree_node = &c.tree.get(&b).unwrap();
+        let lagrange_polynomials = calculate_lagrange_polynomials(&tree_node.roots_of_unity);
+        let c_f = self.evaluate_at_g2_tau(&inner_product_with_polynomial(&f.f, &lagrange_polynomials));
+
+        let vanishing_polynomial = calculate_vanishing_polynomial(&tree_node.roots_of_unity);
+        let vanishing_b_at_tau = self.evaluate_at_g2_tau(&vanishing_polynomial);
+
+        let cond2_lhs = Bls12_381::pairing(pi.c_b, c_f)
+            - Bls12_381::pairing(G1::generator() * (y / ScalarField::from(2u128.pow(f.kappa))), G2::generator());
+        let cond2_rhs = Bls12_381::pairing(pi.r, G2::generator()) + Bls12_381::pairing(pi.h_b, vanishing_b_at_tau);
+        assert_eq!(cond2_lhs, cond2_rhs);
 
         let cond1_lhs = Bls12_381::pairing(c.c - pi.c_b, G2::generator());
-
         let mut cond1_rhs = PairingOutput::zero();
         for j in 0..f.nu {
             let previous_h = pi.h_b_prefixes[j as usize];
@@ -142,41 +161,7 @@ impl UnvariateVectorTreeCommitment {
         }
         assert_eq!(cond1_lhs, cond1_rhs);
 
-        let b: Vec<bool> = (0..=f.nu).map(|i| f.s & (1 << i) != 0).collect();
-        let tree_node = &c.tree.get(&b).unwrap();
-        let lagrange_polynomials = calculate_lagrange_polynomials(&tree_node.roots_of_unity);
-        let vanishing_polynomial = calculate_vanishing_polynomial(&tree_node.roots_of_unity);
-        let c_f = self.evaluate_at_g2_tau(&inner_product_with_polynomial(&f.f, &lagrange_polynomials));
-        let vanishing_b_at_tau = self.evaluate_at_g2_tau(&vanishing_polynomial);
-
-        let cond2_lhs = Bls12_381::pairing(pi.c_b, c_f)
-            - Bls12_381::pairing(G1::generator() * (y / ScalarField::from(2u128.pow(f.kappa))), G2::generator());
-        let cond2_rhs = Bls12_381::pairing(pi.r, G2::generator()) + Bls12_381::pairing(pi.h_b, vanishing_b_at_tau);
-        assert_eq!(cond2_lhs, cond2_rhs);
-
-        let cond3_lhs = Bls12_381::pairing(pi.r, self.public_parameters.g2_tau_powers[(self.m + 2 - 2u64.pow(f.kappa)) as usize]);
-        let cond3_rhs = Bls12_381::pairing(pi.r_hat, G2::generator());
-        assert_eq!(cond3_lhs, cond3_rhs);
-
-        let cond4_lhs = Bls12_381::pairing(pi.c_b, self.public_parameters.g2_tau_powers[(self.m + 1 - 2u64.pow(f.kappa)) as usize]);
-        let cond4_rhs = Bls12_381::pairing(pi.c_hat_b, G2::generator());
-        assert_eq!(cond4_lhs, cond4_rhs);
-
         return true;
-    }
-
-    // delete this if not used
-    fn calculate_roots_of_unity(&self, s: usize, j: u32) -> Vec<ScalarField> {
-        let r = self.m / 2u64.pow(j + 1);
-        let omega = ScalarField::get_root_of_unity(r).unwrap();
-        let mut roots_of_unity: Vec<ScalarField> = Vec::with_capacity(r as usize);
-        let mut previous = omega.pow([s as u64]);
-        for _ in 0..r {
-            previous *= omega;
-            roots_of_unity.push(previous);
-        }
-        assert_eq!(previous, ScalarField::one());
-        roots_of_unity
     }
 
     fn commit_in_g1(&self, a: &Vec<ScalarField>) -> G1 {
