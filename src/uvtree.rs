@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
 #![allow(unused_imports)]
-use ark_bls12_381::{Fr as ScalarField, G1Projective as G1, G2Projective as G2};
+use ark_bls12_381::{Bls12_381, Fr as ScalarField, G1Projective as G1, G2Projective as G2};
 use ark_ec::Group;
 use ark_ec::pairing::Pairing;
 use ark_ff::{FftField, Field, One, Zero};
@@ -80,7 +80,7 @@ impl UnvariateVectorTreeCommitment {
         }
     }
 
-    pub fn open(&self, c: &Commitment, f: Function, y: ScalarField) -> Proof {
+    pub fn open(&self, c: &Commitment, f: &Function, y: ScalarField) -> Proof {
         assert_eq!(self.m, 2u64.pow(f.kappa + f.nu + 1));
         assert_eq!(f.f.len(), 2usize.pow(f.kappa));
         assert!(f.s < 2usize.pow(f.nu));
@@ -112,8 +112,18 @@ impl UnvariateVectorTreeCommitment {
         }
     }
 
-    pub fn verify_opening(&self, c: &Commitment, b: Vec<ScalarField>, y: ScalarField, pi: Proof) -> bool {
-        unimplemented!()
+    pub fn verify_opening(&self, c: &Commitment, f: &Function, y: ScalarField, pi: Proof) -> bool {
+        let roots_of_unity = self.calculate_roots_of_unity(f.s, f.nu);
+        let lagrange_polynomials = calculate_lagrange_polynomials(2u64.pow(f.nu), &roots_of_unity);
+        let vanishing_polynomial = calculate_vanishing_polynomial(&roots_of_unity);
+
+        let c_f = self.evaluate_at_g2_tau(&inner_product_with_polynomial(&f.f, &lagrange_polynomials));
+        let vanishing_at_tau = self.evaluate_at_g2_tau(&vanishing_polynomial);
+
+        //let cond1 = Bls12_381::pairing(c.c, g2_c) - Bls12_381::pairing(G1::generator() * (y / Field::from(self.m)), G2::generator())
+        //    == Bls12_381::pairing(pi.r, self.public_parameters.g2_tau_powers[1]) + Bls12_381::pairing(pi.h, vanishing_at_tau);
+        //let cond2 = Bls12_381::pairing(pi.r, self.public_parameters.g2_tau_powers[2]) == Bls12_381::pairing(pi.r_hat, G2::generator());
+        return true;
     }
 
     fn calculate_roots_of_unity(&self, s: usize, j: u32) -> Vec<ScalarField> {

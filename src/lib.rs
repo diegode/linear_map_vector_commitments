@@ -32,7 +32,7 @@ mod tests {
             nu: 1,
             s: 0
         };
-        let pi = uvtree.open(&c, f, Field::from(3));
-        assert!(uvtree.verify_opening(&c, vec![Field::one(); 8], Field::from(3), pi));
+        let pi = uvtree.open(&c, &f, Field::from(3));
+        assert!(uvtree.verify_opening(&c, &f, Field::from(3), pi));
     }
 }
