@@ -25,7 +25,8 @@ mod tests {
         let uvtree = UnvariateVectorTreeCommitment::new(8);
         let c = uvtree.commit(vec![
             Field::from(1), Field::from(2), Field::from(3), Field::from(4),
-            Field::from(5), Field::from(6), Field::from(7), Field::from(8)]);
+            Field::from(5), Field::from(6), Field::from(7), Field::from(8)],
+            1, 1);
         let f = Function {
             f: vec![Field::one(), Field::one()],
             kappa: 1,

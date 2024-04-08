@@ -1,6 +1,8 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
 #![allow(unused_imports)]
+
+use std::collections::HashMap;
 use ark_bls12_381::{Bls12_381, Fr as ScalarField, G1Projective as G1, G2Projective as G2};
 use ark_ec::Group;
 use ark_ec::pairing::Pairing;
@@ -17,9 +19,15 @@ pub struct PublicParameters {
     pub g2_lambdas: Vec<G2>,
 }
 
+pub struct TreeNode {
+    vector: Vec<ScalarField>,
+    roots_of_unity: Vec<ScalarField>,
+}
+
 pub struct Commitment {
     pub c: G1,
     pub v: Vec<ScalarField>,
+    pub tree: HashMap<Vec<bool>, TreeNode>
 }
 
 pub struct Function {
@@ -42,6 +50,7 @@ pub struct Proof {
 pub struct UnvariateVectorTreeCommitment {
     m: u64,
     tau: ScalarField, // left for debugging purposes
+    roots_of_unity: Vec<ScalarField>,
     vanishing_polynomial: DensePolynomial<ScalarField>,
     lagrange_polynomials: Vec<DensePolynomial<ScalarField>>,
     public_parameters: PublicParameters,
@@ -55,12 +64,14 @@ impl UnvariateVectorTreeCommitment {
         let tau = generate_tau();
 
         let lagrange_polynomials = calculate_lagrange_polynomials(m, &roots_of_unity);
+        let vanishing_polynomial = calculate_vanishing_polynomial(&roots_of_unity);
         let g1_lambdas = calculate_g1_lambdas(&lagrange_polynomials, tau);
         let g2_lambdas = calculate_g2_lambdas(&lagrange_polynomials, tau);
         Self {
             m,
             tau,
-            vanishing_polynomial: calculate_vanishing_polynomial(&roots_of_unity),
+            roots_of_unity,
+            vanishing_polynomial,
             lagrange_polynomials,
             public_parameters: PublicParameters {
                 g1_tau_powers: calculate_g1_tau_powers(tau, 2*m),
@@ -71,12 +82,15 @@ impl UnvariateVectorTreeCommitment {
         }
     }
 
-    pub fn commit(&self, v: Vec<ScalarField>) -> Commitment {
+    pub fn commit(&self, v: Vec<ScalarField>, kappa: u32, nu: u32) -> Commitment {
         assert_eq!(v.len(), self.m as usize);
+        assert_eq!(self.m, 2u64.pow(kappa + nu + 1));
         let c = self.commit_in_g1(&v);
+        let tree = self.build_vector_tree(&v, kappa, nu);
         Commitment {
             c,
             v,
+            tree,
         }
     }
 
@@ -90,25 +104,38 @@ impl UnvariateVectorTreeCommitment {
             .take(2usize.pow(f.kappa))
             .collect();
 
-        //let mut c_b_prefixes: Vec<DensePolynomial<ScalarField>> = vec![DensePolynomial::zero(); (f.nu + 1) as usize];
+        let mut h_b_prefixes: Vec<DensePolynomial<ScalarField>> = vec![DensePolynomial::zero(); (f.nu + 1) as usize];
+        for j in 0..=f.nu {
+            // b_j is s with the bits higher than j set to 0
+            let b_j = f.s & (2usize.pow(j + 1) - 1);
+            let v_b_j = c.v.iter().cloned()
+                .skip(b_j * 2usize.pow(f.kappa))
+                .take(2usize.pow(f.kappa))
+                .collect();
+
+            let roots_of_unity = self.calculate_roots_of_unity(b_j, j);
+            let lagrange_polynomials = calculate_lagrange_polynomials(2u64.pow(j), &roots_of_unity);
+            let c_b_j = self.evaluate_at_g1_tau(&inner_product_with_polynomial(&v_b_j, &lagrange_polynomials));
+            let k_b_j = ScalarField::one() / (ScalarField::from(2) * roots_of_unity.last().unwrap()); // assuming roots_of_unity[r-1] is omega^(sr)
+            // h_b_prefixes[j as usize]
+        }
+
         let roots_of_unity = self.calculate_roots_of_unity(f.s, f.nu);
         let lagrange_polynomials = calculate_lagrange_polynomials(2u64.pow(f.nu), &roots_of_unity);
         let vanishing_polynomial = calculate_vanishing_polynomial(&roots_of_unity);
 
         let (h_b, r) = calculate_h_and_r(&v_b, &f.f, &lagrange_polynomials, y, &vanishing_polynomial);
-        let h_b_at_tau = self.evaluate_at_g1_tau(&h_b);
-        let r_at_tau = self.evaluate_at_g1_tau(&r);
         let r_hat = multiply_by_x_power(&r, (self.m + 2 - 2u64.pow(f.kappa)) as usize);
-        let r_hat_at_tau = self.evaluate_at_g1_tau(&r_hat);
-
+        let c_b = inner_product_with_polynomial(&v_b, &lagrange_polynomials);
+        let c_hat_b = multiply_by_x_power(&c_b, (self.m - 2u64.pow(f.kappa)) as usize);
         Proof {
-            h_b: h_b_at_tau,
-            r: r_at_tau,
-            r_hat: r_hat_at_tau,
+            h_b: self.evaluate_at_g1_tau(&h_b),
+            r: self.evaluate_at_g1_tau(&r),
+            r_hat: self.evaluate_at_g1_tau(&r_hat),
+            c_b: self.evaluate_at_g1_tau(&c_b),
+            c_hat_b: self.evaluate_at_g1_tau(&c_hat_b),
             h: G1::zero(),
             h_b_prefixes: vec![G1::zero(); 2],
-            c_b: G1::zero(),
-            c_hat_b: G1::zero(),
         }
     }
 
@@ -175,5 +202,29 @@ impl UnvariateVectorTreeCommitment {
         }
         assert_eq!(result, G2::generator() * p.evaluate(&self.tau));
         result
+    }
+
+    fn build_vector_tree(&self, v: &Vec<ScalarField>, kappa: u32, nu: u32) -> HashMap<Vec<bool>, TreeNode> {
+        let mut tree: HashMap<Vec<bool>, TreeNode> = HashMap::new();
+        tree.insert(vec![], TreeNode { vector: v.clone(), roots_of_unity: self.roots_of_unity.clone() });
+        for level in 1..=nu {
+            for i in 0..2usize.pow(level) {
+                let mut b = Vec::with_capacity(level as usize);
+                for j in 0..level {
+                    b.push(i & (1 << j) != 0);
+                }
+                let parent_node = tree.get(&b[..(level - 1) as usize]).unwrap();
+                let child_vector = parent_node.vector.iter().cloned()
+                    .skip(if b[(level - 1) as usize] { 1 } else { 0 })
+                    .step_by(2)
+                    .collect();
+                let child_roots_of_unity = parent_node.roots_of_unity.iter().cloned()
+                    .skip(if b[(level - 1) as usize] { 1 } else { 0 })
+                    .step_by(2)
+                    .collect();
+                tree.insert(b, TreeNode { vector: child_vector, roots_of_unity: child_roots_of_unity });
+            }
+        }
+        tree
     }
 }
