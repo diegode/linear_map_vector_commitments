@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 use ark_bls12_381::{Bls12_381, Fr as ScalarField, G1Projective as G1, G2Projective as G2};
 use ark_ec::Group;
-use ark_ec::pairing::Pairing;
+use ark_ec::pairing::{Pairing, PairingOutput};
 use ark_ff::{FftField, Field, One, Zero};
 use ark_poly::{DenseUVPolynomial, Polynomial};
 use ark_poly::polynomial::univariate::DensePolynomial;
@@ -20,7 +20,7 @@ pub struct PublicParameters {
 }
 
 pub struct TreeNode {
-    vector: Vec<ScalarField>,
+    vector: Vec<Vec<ScalarField>>,
     roots_of_unity: Vec<ScalarField>,
 }
 
@@ -99,28 +99,24 @@ impl UnvariateVectorTreeCommitment {
         assert_eq!(f.f.len(), 2usize.pow(f.kappa));
         assert!(f.s < 2usize.pow(f.nu));
 
-        let v_b = c.v.iter().cloned()
-            .skip(f.s * 2usize.pow(f.kappa))
-            .take(2usize.pow(f.kappa))
-            .collect();
+        let v_b = c.tree.get(&vec![]).unwrap()
+            .vector.get(f.s).unwrap();
 
-        let mut h_b_prefixes: Vec<DensePolynomial<ScalarField>> = vec![DensePolynomial::zero(); (f.nu + 1) as usize];
-        for j in 0..=f.nu {
-            // b_j is s with the bits higher than j set to 0
-            let b_j = f.s & (2usize.pow(j + 1) - 1);
-            let v_b_j = c.v.iter().cloned()
-                .skip(b_j * 2usize.pow(f.kappa))
-                .take(2usize.pow(f.kappa))
-                .collect();
-
-            let roots_of_unity = self.calculate_roots_of_unity(b_j, j);
+        let mut h_b_prefixes: Vec<DensePolynomial<ScalarField>> = Vec::with_capacity(f.nu as usize);
+        for j in 0..f.nu {
+            let b_j: Vec<bool> = (0..=j).map(|i| f.s & (1 << i) != 0).collect();
+            let tree_node = c.tree.get(&b_j).unwrap();
+            let roots_of_unity = &tree_node.roots_of_unity;
+            let v_b_j = &tree_node.vector.get(0).unwrap(); // probably this is incorrect
             let lagrange_polynomials = calculate_lagrange_polynomials(2u64.pow(j), &roots_of_unity);
+            println!("roots_of_unity size {:?}", roots_of_unity.len());
+            println!("v_b_j size {:?}", v_b_j.len());
             let c_b_j = self.evaluate_at_g1_tau(&inner_product_with_polynomial(&v_b_j, &lagrange_polynomials));
             let k_b_j = ScalarField::one() / (ScalarField::from(2) * roots_of_unity.last().unwrap()); // assuming roots_of_unity[r-1] is omega^(sr)
-            // h_b_prefixes[j as usize]
+            // h_b_prefixes.push()
         }
 
-        let roots_of_unity = self.calculate_roots_of_unity(f.s, f.nu);
+        let roots_of_unity = &c.tree.get(&vec![]).unwrap().roots_of_unity;
         let lagrange_polynomials = calculate_lagrange_polynomials(2u64.pow(f.nu), &roots_of_unity);
         let vanishing_polynomial = calculate_vanishing_polynomial(&roots_of_unity);
 
@@ -140,19 +136,43 @@ impl UnvariateVectorTreeCommitment {
     }
 
     pub fn verify_opening(&self, c: &Commitment, f: &Function, y: ScalarField, pi: Proof) -> bool {
-        let roots_of_unity = self.calculate_roots_of_unity(f.s, f.nu);
+
+        let cond1_lhs = Bls12_381::pairing(c.c - pi.c_b, G2::generator());
+
+        let mut cond1_rhs = PairingOutput::zero();
+        let mut previous_h = pi.h;
+        for j in 0..=f.nu {
+            let b_j: Vec<bool> = (0..=j).map(|i| f.s & (1 << i) != 0).collect();
+            let roots_of_unity = &c.tree.get(&b_j).unwrap().roots_of_unity;
+            let vanishing_bj_at_tau: G2 = self.evaluate_at_g2_tau(&calculate_vanishing_polynomial(&roots_of_unity));
+            cond1_rhs += Bls12_381::pairing(previous_h, vanishing_bj_at_tau);
+            previous_h = pi.h_b_prefixes[j as usize];
+        }
+        assert_eq!(cond1_lhs, cond1_rhs);
+
+        let roots_of_unity = &c.tree.get(&vec![]).unwrap().roots_of_unity;
         let lagrange_polynomials = calculate_lagrange_polynomials(2u64.pow(f.nu), &roots_of_unity);
         let vanishing_polynomial = calculate_vanishing_polynomial(&roots_of_unity);
-
         let c_f = self.evaluate_at_g2_tau(&inner_product_with_polynomial(&f.f, &lagrange_polynomials));
-        let vanishing_at_tau = self.evaluate_at_g2_tau(&vanishing_polynomial);
+        let vanishing_b_at_tau = self.evaluate_at_g2_tau(&vanishing_polynomial);
 
-        //let cond1 = Bls12_381::pairing(c.c, g2_c) - Bls12_381::pairing(G1::generator() * (y / Field::from(self.m)), G2::generator())
-        //    == Bls12_381::pairing(pi.r, self.public_parameters.g2_tau_powers[1]) + Bls12_381::pairing(pi.h, vanishing_at_tau);
-        //let cond2 = Bls12_381::pairing(pi.r, self.public_parameters.g2_tau_powers[2]) == Bls12_381::pairing(pi.r_hat, G2::generator());
+        let cond2_lhs = Bls12_381::pairing(pi.c_b, c_f)
+            - Bls12_381::pairing(G1::generator() * (y / ScalarField::from(2u128.pow(f.kappa))), G2::generator());
+        let cond2_rhs = Bls12_381::pairing(pi.r, G2::generator()) + Bls12_381::pairing(pi.h_b, vanishing_b_at_tau);
+        assert_eq!(cond2_lhs, cond2_rhs);
+
+        let cond3_lhs = Bls12_381::pairing(pi.r, self.public_parameters.g2_tau_powers[(self.m + 2 - 2u64.pow(f.kappa)) as usize]);
+        let cond3_rhs = Bls12_381::pairing(pi.r_hat, G2::generator());
+        assert_eq!(cond3_lhs, cond3_rhs);
+
+        let cond4_lhs = Bls12_381::pairing(pi.c_b, self.public_parameters.g2_tau_powers[(self.m + 1 - 2u64.pow(f.kappa)) as usize]);
+        let cond4_rhs = Bls12_381::pairing(pi.c_hat_b, G2::generator());
+        assert_eq!(cond4_lhs, cond4_rhs);
+
         return true;
     }
 
+    // delete this if not used
     fn calculate_roots_of_unity(&self, s: usize, j: u32) -> Vec<ScalarField> {
         let r = self.m / 2u64.pow(j + 1);
         let omega = ScalarField::get_root_of_unity(r).unwrap();
@@ -206,7 +226,15 @@ impl UnvariateVectorTreeCommitment {
 
     fn build_vector_tree(&self, v: &Vec<ScalarField>, kappa: u32, nu: u32) -> HashMap<Vec<bool>, TreeNode> {
         let mut tree: HashMap<Vec<bool>, TreeNode> = HashMap::new();
-        tree.insert(vec![], TreeNode { vector: v.clone(), roots_of_unity: self.roots_of_unity.clone() });
+        let mut chunked_vector = Vec::with_capacity(2usize.pow(nu));
+        for i in 0..2usize.pow(nu) {
+            chunked_vector.push(v.iter().cloned()
+                .skip(i * 2usize.pow(kappa))
+                .take(2usize.pow(kappa))
+                .collect());
+        }
+        let roots_of_unity = calculate_roots_of_unity(2u64.pow(kappa));
+        tree.insert(vec![], TreeNode { vector: chunked_vector, roots_of_unity });
         for level in 1..=nu {
             for i in 0..2usize.pow(level) {
                 let mut b = Vec::with_capacity(level as usize);
@@ -214,11 +242,11 @@ impl UnvariateVectorTreeCommitment {
                     b.push(i & (1 << j) != 0);
                 }
                 let parent_node = tree.get(&b[..(level - 1) as usize]).unwrap();
-                let child_vector = parent_node.vector.iter().cloned()
+                let child_vector: Vec<Vec<ScalarField>> = parent_node.vector.iter().cloned()
                     .skip(if b[(level - 1) as usize] { 1 } else { 0 })
                     .step_by(2)
                     .collect();
-                let child_roots_of_unity = parent_node.roots_of_unity.iter().cloned()
+                let child_roots_of_unity: Vec<ScalarField> = parent_node.roots_of_unity.iter().cloned()
                     .skip(if b[(level - 1) as usize] { 1 } else { 0 })
                     .step_by(2)
                     .collect();
