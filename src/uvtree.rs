@@ -100,17 +100,20 @@ impl UnvariateVectorTreeCommitment {
 
         let mut h_b_prefixes: Vec<G1> = Vec::with_capacity((f.nu + 1) as usize);
         for j in 0..=f.nu {
-            let b_j: Vec<bool> = (0..j).map(|i| f.s & (1 << i) != 0).collect();
+            let b_j: Vec<bool> = number_to_bin_vector(f.s, j);
             let left_child = c.tree.get(&[b_j.clone(), vec![false]].concat()).unwrap();
             let right_child = c.tree.get(&[b_j.clone(), vec![true]].concat()).unwrap();
             let vanishing_polynomial = calculate_vanishing_polynomial(&c.tree.get(&b_j).unwrap().roots_of_unity);
             let omega_sr = -vanishing_polynomial.coeffs[0];
-            let k_bj = ScalarField::one() / (omega_sr * ScalarField::from(2)); // assuming it is omega^(sr)
+            if j == 0 {
+                assert_eq!(omega_sr, ScalarField::one());
+            }
+            let k_bj = ScalarField::one() / (omega_sr * ScalarField::from(2));
             let h_bj = (self.calculate_g1_commitment(&left_child) - self.calculate_g1_commitment(&right_child)) * k_bj;
             h_b_prefixes.push(h_bj);
         }
 
-        let b: Vec<bool> = (0..=f.nu).map(|i| f.s & (1 << i) != 0).collect();
+        let b: Vec<bool> = number_to_bin_vector(f.s, f.nu + 1);
         let tree_node = &c.tree.get(&b).unwrap();
         let lagrange_polynomials = calculate_lagrange_polynomials(&tree_node.roots_of_unity);
         let vanishing_polynomial = calculate_vanishing_polynomial(&tree_node.roots_of_unity);
@@ -125,7 +128,7 @@ impl UnvariateVectorTreeCommitment {
             r_hat: self.evaluate_at_g1_tau(&r_hat),
             c_b: self.evaluate_at_g1_tau(&c_b),
             c_hat_b: self.evaluate_at_g1_tau(&c_hat_b),
-            h_b_prefixes: h_b_prefixes,
+            h_b_prefixes,
         }
     }
 
@@ -138,7 +141,7 @@ impl UnvariateVectorTreeCommitment {
         let cond4_rhs = Bls12_381::pairing(pi.c_hat_b, G2::generator());
         assert_eq!(cond4_lhs, cond4_rhs);
 
-        let b: Vec<bool> = (0..=f.nu).map(|i| f.s & (1 << i) != 0).collect();
+        let b = number_to_bin_vector(f.s, f.nu + 1);
         let tree_node = &c.tree.get(&b).unwrap();
         let lagrange_polynomials = calculate_lagrange_polynomials(&tree_node.roots_of_unity);
         let c_f = self.evaluate_at_g2_tau(&inner_product_with_polynomial(&f.f, &lagrange_polynomials));
@@ -155,7 +158,8 @@ impl UnvariateVectorTreeCommitment {
         let mut cond1_rhs = PairingOutput::zero();
         for j in 0..=f.nu {
             let previous_h = pi.h_b_prefixes[j as usize];
-            let b_j: Vec<bool> = (0..=j).map(|i| f.s & (1 << i) != 0).collect();
+            let b_j: Vec<bool> = number_to_bin_vector(f.s, j + 1);
+            println!("b_{:?}: {:?}", j, b_j);
             let roots_of_unity = &c.tree.get(&b_j).unwrap().roots_of_unity;
             let vanishing_bj_at_tau: G2 = self.evaluate_at_g2_tau(&calculate_vanishing_polynomial(&roots_of_unity));
             cond1_rhs += Bls12_381::pairing(previous_h, vanishing_bj_at_tau);

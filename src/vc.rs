@@ -133,3 +133,7 @@ pub fn multiply_by_x_power(p: &DensePolynomial<Field>, power: usize) -> DensePol
     coeffs.append(&mut p.coeffs.clone());
     DensePolynomial::from_coefficients_vec(coeffs)
 }
+
+pub fn number_to_bin_vector(s : usize, j : u32) -> Vec<bool> {
+    (0..j).map(|i| s & (1 << i) != 0).collect()
+}
