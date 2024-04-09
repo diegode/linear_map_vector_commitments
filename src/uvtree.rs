@@ -1,13 +1,10 @@
-#![allow(dead_code)]
-#![allow(unused_variables)]
-#![allow(unused_imports)]
-
 use std::collections::HashMap;
+
 use ark_bls12_381::{Bls12_381, Fr as ScalarField, G1Projective as G1, G2Projective as G2};
 use ark_ec::Group;
 use ark_ec::pairing::{Pairing, PairingOutput};
-use ark_ff::{FftField, Field, One, Zero};
-use ark_poly::{DenseUVPolynomial, Polynomial};
+use ark_ff::{One, Zero};
+use ark_poly::Polynomial;
 use ark_poly::polynomial::univariate::DensePolynomial;
 
 use crate::vc::*;
@@ -50,7 +47,6 @@ pub struct UnvariateVectorTreeCommitment {
     m: u64,
     tau: ScalarField, // left for debugging purposes
     roots_of_unity: Vec<ScalarField>,
-    vanishing_polynomial: DensePolynomial<ScalarField>,
     lagrange_polynomials: Vec<DensePolynomial<ScalarField>>,
     public_parameters: PublicParameters,
 }
@@ -63,14 +59,12 @@ impl UnvariateVectorTreeCommitment {
         let tau = generate_tau();
 
         let lagrange_polynomials = calculate_lagrange_polynomials(&roots_of_unity);
-        let vanishing_polynomial = calculate_vanishing_polynomial(&roots_of_unity);
         let g1_lambdas = calculate_g1_lambdas(&lagrange_polynomials, tau);
         let g2_lambdas = calculate_g2_lambdas(&lagrange_polynomials, tau);
         Self {
             m,
             tau,
             roots_of_unity,
-            vanishing_polynomial,
             lagrange_polynomials,
             public_parameters: PublicParameters {
                 g1_tau_powers: calculate_g1_tau_powers(tau, 2*m),
@@ -85,7 +79,7 @@ impl UnvariateVectorTreeCommitment {
         assert_eq!(v.len(), self.m as usize);
         assert_eq!(self.m, 2u64.pow(kappa + nu + 1));
         let c = self.commit_in_g1(&v);
-        let tree = self.build_vector_tree(&v, kappa, nu);
+        let tree = self.build_vector_tree(&v, nu);
         Commitment {
             c,
             v,
@@ -176,15 +170,6 @@ impl UnvariateVectorTreeCommitment {
         c
     }
 
-    fn commit_in_g2(&self, a: &Vec<ScalarField>) -> G2 {
-        let mut c = G2::zero();
-        for i in 0..a.len() {
-            c += self.public_parameters.g2_lambdas[i] * a[i];
-        }
-        assert_eq!(c, G2::generator() * inner_product_with_polynomial(&a, &self.lagrange_polynomials).evaluate(&self.tau));
-        c
-    }
-
     fn evaluate_at_g1_tau(&self, p: &DensePolynomial<ScalarField>) -> G1 {
         assert!(p.coeffs.len() <= self.public_parameters.g1_tau_powers.len());
         let mut result = G1::zero();
@@ -205,7 +190,7 @@ impl UnvariateVectorTreeCommitment {
         result
     }
 
-    fn build_vector_tree(&self, v: &Vec<ScalarField>, kappa: u32, nu: u32) -> HashMap<Vec<bool>, TreeNode> {
+    fn build_vector_tree(&self, v: &Vec<ScalarField>, nu: u32) -> HashMap<Vec<bool>, TreeNode> {
         let mut tree: HashMap<Vec<bool>, TreeNode> = HashMap::new();
         tree.insert(vec![], TreeNode {
             vector: v.clone(),
