@@ -103,8 +103,9 @@ impl UnvariateVectorTreeCommitment {
             let b_j: Vec<bool> = (0..j).map(|i| f.s & (1 << i) != 0).collect();
             let left_child = c.tree.get(&[b_j.clone(), vec![false]].concat()).unwrap();
             let right_child = c.tree.get(&[b_j.clone(), vec![true]].concat()).unwrap();
-            let last_root_of_unity = *c.tree.get(&b_j).unwrap().roots_of_unity.last().unwrap(); // assuming it is omega^(sr)
-            let k_bj = last_root_of_unity / ScalarField::from(2);
+            let vanishing_polynomial = calculate_vanishing_polynomial(&c.tree.get(&b_j).unwrap().roots_of_unity);
+            let omega_sr = -vanishing_polynomial.coeffs[0];
+            let k_bj = ScalarField::one() / (omega_sr * ScalarField::from(2)); // assuming it is omega^(sr)
             let h_bj = (self.calculate_g1_commitment(&left_child) - self.calculate_g1_commitment(&right_child)) * k_bj;
             h_b_prefixes.push(h_bj);
         }
@@ -143,16 +144,16 @@ impl UnvariateVectorTreeCommitment {
         let c_f = self.evaluate_at_g2_tau(&inner_product_with_polynomial(&f.f, &lagrange_polynomials));
 
         let vanishing_polynomial = calculate_vanishing_polynomial(&tree_node.roots_of_unity);
-        let vanishing_b_at_tau = self.evaluate_at_g2_tau(&vanishing_polynomial);
+        let vanishing_at_tau = self.evaluate_at_g2_tau(&vanishing_polynomial);
 
         let cond2_lhs = Bls12_381::pairing(pi.c_b, c_f)
             - Bls12_381::pairing(G1::generator() * (y / ScalarField::from(2u128.pow(f.kappa))), G2::generator());
-        let cond2_rhs = Bls12_381::pairing(pi.r, G2::generator()) + Bls12_381::pairing(pi.h_b, vanishing_b_at_tau);
+        let cond2_rhs = Bls12_381::pairing(pi.r, self.public_parameters.g2_tau_powers[1]) + Bls12_381::pairing(pi.h_b, vanishing_at_tau);
         assert_eq!(cond2_lhs, cond2_rhs);
 
         let cond1_lhs = Bls12_381::pairing(c.c - pi.c_b, G2::generator());
         let mut cond1_rhs = PairingOutput::zero();
-        for j in 0..f.nu {
+        for j in 0..=f.nu {
             let previous_h = pi.h_b_prefixes[j as usize];
             let b_j: Vec<bool> = (0..=j).map(|i| f.s & (1 << i) != 0).collect();
             let roots_of_unity = &c.tree.get(&b_j).unwrap().roots_of_unity;
