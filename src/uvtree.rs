@@ -87,8 +87,8 @@ impl UnvariateVectorTreeCommitment {
         assert_eq!(f.f.len(), 2usize.pow(f.kappa));
         assert!(f.s < 2usize.pow(f.nu));
 
-        let mut h_b_prefixes: Vec<G1> = Vec::with_capacity((f.nu + 1) as usize);
-        for j in 0..=f.nu {
+        let mut h_b_prefixes: Vec<G1> = Vec::with_capacity(f.nu as usize);
+        for j in 0..f.nu {
             let b_j = number_to_bin_vector(f.s, j);
             let left_child = c.tree.get(&[b_j.clone(), vec![false]].concat()).unwrap();
             let right_child = c.tree.get(&[b_j.clone(), vec![true]].concat()).unwrap();
@@ -145,11 +145,11 @@ impl UnvariateVectorTreeCommitment {
 
         let cond1_lhs = Bls12_381::pairing(c.c - pi.c_b, G2::generator());
         let mut cond1_rhs = PairingOutput::zero();
-        for j in 0..=f.nu {
-            let b_j = number_to_bin_vector(f.s, j + 1);
-            let roots_of_unity = &c.tree.get(&b_j).unwrap().roots_of_unity;
-            let vanishing_bj_at_tau: G2 = self.evaluate_at_g2_tau(&calculate_vanishing_polynomial(&roots_of_unity));
-            cond1_rhs += Bls12_381::pairing(pi.h_b_prefixes[j as usize], vanishing_bj_at_tau);
+        for j in 0..f.nu {
+            let b_jp1 = number_to_bin_vector(f.s, j + 1);
+            let roots_of_unity = &c.tree.get(&b_jp1).unwrap().roots_of_unity;
+            let vanishing_at_tau: G2 = self.evaluate_at_g2_tau(&calculate_vanishing_polynomial(&roots_of_unity));
+            cond1_rhs += Bls12_381::pairing(pi.h_b_prefixes[j as usize], vanishing_at_tau);
         }
         assert_eq!(cond1_lhs, cond1_rhs);
 
@@ -191,13 +191,10 @@ impl UnvariateVectorTreeCommitment {
             vector: v.clone(),
             roots_of_unity: self.roots_of_unity.clone()
         });
-        for level in 1..=(nu + 1) {
-            for i in 0..2usize.pow(level) {
-                let mut b = Vec::with_capacity(level as usize);
-                for j in 0..level {
-                    b.push(i & (1 << j) != 0);
-                }
-                let parent_node = tree.get(&b[..(level - 1) as usize]).unwrap();
+        for j in 1..=(nu + 1) {
+            for s in 0..2usize.pow(j) {
+                let b = number_to_bin_vector(s, j);
+                let parent_node = tree.get(&b[..(j - 1) as usize]).unwrap();
                 let child_vector: Vec<Field> = parent_node.vector.iter().cloned()
                     .skip(if b[0] { 1 } else { 0 })
                     .step_by(2)
