@@ -199,6 +199,9 @@ impl UnvariateVectorTreeCommitment {
                     .skip(!b[0] as usize)
                     .step_by(2)
                     .collect();
+                if s == 0 {
+                    assert_eq!(child_roots_of_unity, calculate_roots_of_unity(self.m / 2u64.pow(j)));
+                }
                 tree.insert(b, TreeNode { vector: child_vector, roots_of_unity: child_roots_of_unity });
             }
         }
