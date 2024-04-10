@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use ark_bls12_381::{Bls12_381, Fr as Field, G1Projective as G1, G2Projective as G2};
 use ark_ec::Group;
 use ark_ec::pairing::{Pairing, PairingOutput};
-use ark_ff::{One, Zero};
+use ark_ff::{FftField, Field as OtherField, One, Zero};
 use ark_poly::Polynomial;
 use ark_poly::polynomial::univariate::DensePolynomial;
 
@@ -94,9 +94,11 @@ impl UnvariateVectorTreeCommitment {
             let right_child = c.tree.get(&[b_j.clone(), vec![true]].concat()).unwrap();
             let vanishing_polynomial = calculate_vanishing_polynomial(&c.tree.get(&b_j).unwrap().roots_of_unity);
             let omega_sr = -vanishing_polynomial.coeffs[0];
-            if j == 0 {
-                assert_eq!(omega_sr, Field::one());
-            }
+
+            let s = b_j.iter().fold(0, |acc, x| acc * 2 + (*x as u64));
+            let r = self.m / 2u64.pow(j + 1);
+            assert_eq!(omega_sr, Field::get_root_of_unity(self.m).unwrap().pow([s * r]));
+
             let k_bj = Field::one() / (omega_sr * Field::from(2));
             let h_bj = (self.calculate_g1_commitment(&left_child) - self.calculate_g1_commitment(&right_child)) * k_bj;
             h_b_prefixes.push(h_bj);
@@ -196,11 +198,11 @@ impl UnvariateVectorTreeCommitment {
                 let b = number_to_bin_vector(s, j);
                 let parent_node = tree.get(&b[..(j - 1) as usize]).unwrap();
                 let child_vector: Vec<Field> = parent_node.vector.iter().cloned()
-                    .skip(if b[0] { 1 } else { 0 })
+                    .skip(b[0] as usize)
                     .step_by(2)
                     .collect();
                 let child_roots_of_unity: Vec<Field> = parent_node.roots_of_unity.iter().cloned()
-                    .skip(if b[0] { 1 } else { 0 })
+                    .skip(b[0] as usize)
                     .step_by(2)
                     .collect();
                 tree.insert(b, TreeNode { vector: child_vector, roots_of_unity: child_roots_of_unity });
