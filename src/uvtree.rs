@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use ark_bls12_381::{Bls12_381, Fr as Field, G1Projective as G1, G2Projective as G2};
 use ark_ec::Group;
 use ark_ec::pairing::{Pairing, PairingOutput};
-use ark_ff::{FftField, Field as OtherField, One, Zero};
+use ark_ff::{Field as OtherField, One, Zero};
 use ark_poly::Polynomial;
 use ark_poly::polynomial::univariate::DensePolynomial;
 
@@ -90,16 +90,10 @@ impl UnvariateVectorTreeCommitment {
         let mut h_b_prefixes: Vec<G1> = Vec::with_capacity((f.nu + 1) as usize);
         for j in 0..=f.nu {
             let b_j = number_to_bin_vector(f.s, j);
+            let omega_sr = self.calculate_omega_sr(&c, &b_j, j);
+            let k_bj = Field::one() / (omega_sr * Field::from(2));
             let left_child = c.tree.get(&[b_j.clone(), vec![false]].concat()).unwrap();
             let right_child = c.tree.get(&[b_j.clone(), vec![true]].concat()).unwrap();
-            let vanishing_polynomial = calculate_vanishing_polynomial(&c.tree.get(&b_j).unwrap().roots_of_unity);
-            let omega_sr = -vanishing_polynomial.coeffs[0];
-
-            let s = b_j.iter().fold(0, |acc, x| acc * 2 + (*x as u64));
-            let r = self.m / 2u64.pow(j + 1);
-            assert_eq!(omega_sr, Field::get_root_of_unity(self.m).unwrap().pow([s * r]));
-
-            let k_bj = Field::one() / (omega_sr * Field::from(2));
             let h_bj = (self.calculate_g1_commitment(&left_child) - self.calculate_g1_commitment(&right_child)) * k_bj;
             h_b_prefixes.push(h_bj);
         }
@@ -202,7 +196,7 @@ impl UnvariateVectorTreeCommitment {
                     .step_by(2)
                     .collect();
                 let child_roots_of_unity: Vec<Field> = parent_node.roots_of_unity.iter().cloned()
-                    .skip(b[0] as usize)
+                    .skip(!b[0] as usize)
                     .step_by(2)
                     .collect();
                 tree.insert(b, TreeNode { vector: child_vector, roots_of_unity: child_roots_of_unity });
@@ -214,5 +208,16 @@ impl UnvariateVectorTreeCommitment {
     fn calculate_g1_commitment(&self, tree_node: &TreeNode) -> G1 {
         let lagrange_polynomials = calculate_lagrange_polynomials(&tree_node.roots_of_unity);
         self.evaluate_at_g1_tau(&inner_product_with_polynomial(&tree_node.vector, &lagrange_polynomials))
+    }
+
+    fn calculate_omega_sr(&self, c: &Commitment, vector: &Vec<bool>, j: u32) -> Field {
+        let roots_of_unity = &c.tree.get(vector).unwrap().roots_of_unity;
+        let vanishing_polynomial = calculate_vanishing_polynomial(roots_of_unity);
+        let omega_sr = -vanishing_polynomial.coeffs[0];
+
+        let s = vector.iter().fold(0, |acc, x| acc * 2 + *x as u64);
+        let r = self.m / 2u64.pow(j + 1);
+        assert_eq!(omega_sr, self.roots_of_unity[0].pow([s * r]));
+        omega_sr
     }
 }

@@ -7,6 +7,7 @@ mod vc;
 mod tests {
     use crate::lvc::*;
     use crate::uvtree::*;
+    use crate::vc::*;
     use ark_bls12_381::Fr as Field;
     use ark_ff::One;
 
@@ -35,5 +36,12 @@ mod tests {
         };
         let pi = uvtree.open(&c, &f, Field::from(6));
         assert!(uvtree.verify_opening(&c, &f, Field::from(6), pi));
+    }
+
+    #[test]
+    fn test_number_to_bin_vector() {
+        let n = 4;
+        let v = number_to_bin_vector(n, 3);
+        assert_eq!(v, vec![false, false, true]);
     }
 }
