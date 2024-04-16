@@ -2,23 +2,40 @@
 mod lvc;
 mod uvtree;
 mod vc;
+mod mvtree;
 
 #[cfg(test)]
 mod tests {
-    use crate::lvc::*;
-    use crate::uvtree::*;
-    use crate::vc::*;
     use ark_bls12_381::Fr as Field;
     use ark_ff::One;
+    use crate::lvc::LinearMapVectorCommitment;
+    use crate::{mvtree, uvtree};
+    use crate::mvtree::MultivariateVectorTreeCommitment;
+    use crate::uvtree::UnvariateVectorTreeCommitment;
+    use crate::vc::number_to_bin_vector;
 
     #[test]
     fn test_lvc() {
         let lvc = LinearMapVectorCommitment::new(8);
-        let c = lvc.commit(vec![
+        let c = lvc.commit(&vec![
             Field::from(1), Field::from(2), Field::from(3), Field::from(4),
             Field::from(5), Field::from(6), Field::from(7), Field::from(8)]);
-        let pi = lvc.open(&c, vec![Field::one(); 8], Field::from(36));
-        assert!(lvc.verify_opening(&c, vec![Field::one(); 8], Field::from(36), pi));
+        let pi = lvc.open(&c, &vec![Field::one(); 8], Field::from(36));
+        assert!(lvc.verify_opening(&c, &vec![Field::one(); 8], Field::from(36), &pi));
+    }
+
+    #[test]
+    fn test_mvtree() {
+        let mvtree = MultivariateVectorTreeCommitment::new(2, 2, 2);
+        let c = mvtree.commit(&vec![
+            Field::from(1), Field::from(2), Field::from(3), Field::from(4),
+            Field::from(5), Field::from(6), Field::from(7), Field::from(8)]);
+        let f = mvtree::Function {
+            f: vec![Field::one(), Field::one()],
+            i: 0,
+        };
+        let pi = mvtree.open(&c, &f, Field::from(3));
+        assert!(mvtree.verify_opening(&c, &f, Field::from(3), &pi));
     }
 
     #[test]
@@ -28,14 +45,14 @@ mod tests {
             Field::from(1), Field::from(2), Field::from(3), Field::from(4),
             Field::from(5), Field::from(6), Field::from(7), Field::from(8)],
             1, 1);
-        let f = Function {
+        let f = uvtree::Function {
             f: vec![Field::one(), Field::one()],
             kappa: 1,
             nu: 1,
             s: 0
         };
         let pi = uvtree.open(&c, &f, Field::from(6));
-        assert!(uvtree.verify_opening(&c, &f, Field::from(6), pi));
+        assert!(uvtree.verify_opening(&c, &f, Field::from(6), &pi));
     }
 
     #[test]

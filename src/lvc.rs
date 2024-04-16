@@ -24,16 +24,16 @@ pub struct Proof {
 }
 
 pub struct LinearMapVectorCommitment {
-    m: u64,
+    m: u32,
     tau: Field, // left for debugging purposes
     vanishing_polynomial: DensePolynomial<Field>,
     lagrange_polynomials: Vec<DensePolynomial<Field>>,
-    public_parameters: PublicParameters,
+    pub public_parameters: PublicParameters,
 }
 
 impl LinearMapVectorCommitment {
 
-    pub fn new(m: u64) -> Self {
+    pub fn new(m: u32) -> Self {
         assert_eq!(m & (m - 1), 0, "m has to be a power of 2");
         let roots_of_unity = calculate_roots_of_unity(m);
         let tau = generate_tau();
@@ -55,16 +55,16 @@ impl LinearMapVectorCommitment {
         }
     }
 
-    pub fn commit(&self, a: Vec<Field>) -> Commitment {
+    pub fn commit(&self, a: &Vec<Field>) -> Commitment {
         assert_eq!(a.len(), self.m as usize);
         let c = self.commit_in_g1(&a);
         Commitment {
             c,
-            a,
+            a: a.clone(),
         }
     }
 
-    pub fn open(&self, c: &Commitment, b: Vec<Field>, y: Field) -> Proof {
+    pub fn open(&self, c: &Commitment, b: &Vec<Field>, y: Field) -> Proof {
         assert_eq!(b.len(), self.m as usize);
         let (h, r) = calculate_h_and_r(&c.a, &b, &self.lagrange_polynomials, y, &self.vanishing_polynomial);
 
@@ -80,7 +80,7 @@ impl LinearMapVectorCommitment {
         }
     }
 
-    pub fn verify_opening(&self, c: &Commitment, b: Vec<Field>, y: Field, pi: Proof) -> bool {
+    pub fn verify_opening(&self, c: &Commitment, b: &Vec<Field>, y: Field, pi: &Proof) -> bool {
         assert_eq!(b.len(), self.m as usize);
         let g2_c = self.commit_in_g2(&b);
 

@@ -12,8 +12,8 @@ pub fn generate_tau() -> Field {
     Field::rand(&mut rng)
 }
 
-pub fn calculate_roots_of_unity(m: u64) -> Vec<Field> {
-    let omega = Field::get_root_of_unity(m).unwrap();
+pub fn calculate_roots_of_unity(m: u32) -> Vec<Field> {
+    let omega = Field::get_root_of_unity(m as u64).unwrap();
     let mut roots_of_unity: Vec<Field> = Vec::with_capacity(m as usize);
     let mut previous = Field::one();
     for _ in 0..m {
@@ -24,7 +24,7 @@ pub fn calculate_roots_of_unity(m: u64) -> Vec<Field> {
     roots_of_unity
 }
 
-pub fn calculate_g1_tau_powers(tau: Field, m: u64) -> Vec<G1> {
+pub fn calculate_g1_tau_powers(tau: Field, m: u32) -> Vec<G1> {
     let mut tau_powers: Vec<G1> = Vec::with_capacity(m as usize);
     let mut previous = G1::generator();
     for _ in 0..m {
@@ -34,7 +34,7 @@ pub fn calculate_g1_tau_powers(tau: Field, m: u64) -> Vec<G1> {
     tau_powers
 }
 
-pub fn calculate_g2_tau_powers(tau: Field, m: u64) -> Vec<G2> {
+pub fn calculate_g2_tau_powers(tau: Field, m: u32) -> Vec<G2> {
     let mut tau_powers: Vec<G2> = Vec::with_capacity(m as usize);
     let mut previous = G2::generator();
     for _ in 0..m {
@@ -46,7 +46,7 @@ pub fn calculate_g2_tau_powers(tau: Field, m: u64) -> Vec<G2> {
 
 pub fn calculate_lagrange_polynomials(roots_of_unity: &Vec<Field>) -> Vec<DensePolynomial<Field>> {
     let m = roots_of_unity.len();
-    let mut polynomials: Vec<DensePolynomial<Field>> = Vec::with_capacity(m as usize);
+    let mut polynomials: Vec<DensePolynomial<Field>> = Vec::with_capacity(m);
     for j in 0..m as usize {
         let mut p = DensePolynomial::from_coefficients_vec(vec![Field::one()]);
         for i in 0..m as usize {
@@ -60,6 +60,15 @@ pub fn calculate_lagrange_polynomials(roots_of_unity: &Vec<Field>) -> Vec<DenseP
         polynomials.push(p);
     }
     polynomials
+}
+
+pub fn calculate_lambdas(lagrange_polynomials: &Vec<DensePolynomial<Field>>, tau: Field) -> Vec<Field> {
+    let mut lambdas: Vec<Field> = Vec::with_capacity(lagrange_polynomials.len());
+    for lagrange_polynomial in lagrange_polynomials {
+        let lambda = lagrange_polynomial.evaluate(&tau);
+        lambdas.push(lambda);
+    }
+    lambdas
 }
 
 pub fn calculate_g1_lambdas(lagrange_polynomials: &Vec<DensePolynomial<Field>>, tau: Field) -> Vec<G1> {
@@ -94,6 +103,11 @@ pub fn inner_product(a: &Vec<Field>, b: &Vec<Field>) -> Field {
     a.iter().zip(b.iter()).map(|(x, y)| x * y).sum()
 }
 
+pub fn inner_product_g1(a: &Vec<G1>, b: &Vec<Field>) -> G1 {
+    assert_eq!(a.len(), b.len());
+    a.iter().zip(b.iter()).map(|(&x, &y)| x * y).sum()
+}
+
 pub fn calculate_vanishing_polynomial(roots_of_unity: &Vec<Field>) -> DensePolynomial<Field> {
     let mut p = DensePolynomial::from_coefficients_vec(vec![Field::one()]);
     for i in 0..roots_of_unity.len() {
@@ -120,7 +134,7 @@ pub fn calculate_h_and_r(a: &Vec<Field>, b: &Vec<Field>, lagrange_polynomials: &
     let p = multiply_polynomials(&a_poly, &b_poly);
     let p_into: DenseOrSparsePolynomial<Field> = p.clone().into();
     let (h, r) = p_into.divide_with_q_and_r(&vanishing_polynomial.clone().into()).unwrap();
-    assert_eq!(r.coeffs[0], y / Field::from(b.len() as u64));
+    assert_eq!(r.coeffs[0], y / Field::from(b.len() as u32));
 
     let r_shifted = DensePolynomial::from_coefficients_slice(&r.coeffs[1..]);
     assert!(r_shifted.degree() < b.len() - 1);
@@ -134,6 +148,23 @@ pub fn multiply_by_x_power(p: &DensePolynomial<Field>, power: usize) -> DensePol
     DensePolynomial::from_coefficients_vec(coeffs)
 }
 
-pub fn number_to_bin_vector(s : usize, j : u32) -> Vec<bool> {
-    (0..j).map(|i| s & (1 << i) != 0).collect()
+pub fn number_to_bin_vector(s: usize, j: u32) -> Vec<bool> {
+    let result: Vec<bool> = (0..j).map(|i| s & (1 << i) != 0).collect();
+    assert_eq!(result.iter().map(|&b| b as u32).collect::<Vec<u32>>(), number_to_digits_vector(s as u32, j, 2));
+    result
+}
+
+pub fn number_to_digits_vector(s: u32, j: u32, base: u32) -> Vec<u32> {
+    let mut v = Vec::with_capacity(j as usize);
+    for k in 0..j {
+        let d = (s / base.pow(k)) % base;
+        v.push(d);
+        if v.len() == j as usize {
+            break;
+        }
+    }
+    while v.len() < j as usize {
+        v.push(0);
+    }
+    v
 }

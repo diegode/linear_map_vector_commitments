@@ -22,7 +22,7 @@ pub struct TreeNode {
 
 pub struct Commitment {
     pub c: G1,
-    pub tree: HashMap<Vec<bool>, TreeNode>,
+    tree: HashMap<Vec<bool>, TreeNode>,
 }
 
 pub struct Function {
@@ -42,7 +42,7 @@ pub struct Proof {
 }
 
 pub struct UnvariateVectorTreeCommitment {
-    m: u64,
+    m: u32,
     tau: Field, // left for debugging purposes
     roots_of_unity: Vec<Field>,
     lagrange_polynomials: Vec<DensePolynomial<Field>>,
@@ -51,7 +51,7 @@ pub struct UnvariateVectorTreeCommitment {
 
 impl UnvariateVectorTreeCommitment {
 
-    pub fn new(m: u64) -> Self {
+    pub fn new(m: u32) -> Self {
         assert_eq!(m & (m - 1), 0, "m has to be a power of 2");
         let roots_of_unity = calculate_roots_of_unity(m);
         let tau = generate_tau();
@@ -73,7 +73,7 @@ impl UnvariateVectorTreeCommitment {
 
     pub fn commit(&self, v: Vec<Field>, kappa: u32, nu: u32) -> Commitment {
         assert_eq!(v.len(), self.m as usize);
-        assert_eq!(self.m, 2u64.pow(kappa + nu + 1));
+        assert_eq!(self.m, 2u32.pow(kappa + nu + 1));
         let c = self.commit_in_g1(&v);
         let tree = self.build_vector_tree(&v, nu);
         Commitment {
@@ -83,7 +83,7 @@ impl UnvariateVectorTreeCommitment {
     }
 
     pub fn open(&self, c: &Commitment, f: &Function, y: Field) -> Proof {
-        assert_eq!(self.m, 2u64.pow(f.kappa + f.nu + 1));
+        assert_eq!(self.m, 2u32.pow(f.kappa + f.nu + 1));
         assert_eq!(f.f.len(), 2usize.pow(f.kappa));
         assert!(f.s < 2usize.pow(f.nu));
 
@@ -104,9 +104,9 @@ impl UnvariateVectorTreeCommitment {
         let vanishing_polynomial = calculate_vanishing_polynomial(&tree_node.roots_of_unity);
 
         let (h_b, r) = calculate_h_and_r(&tree_node.vector, &f.f, &lagrange_polynomials, y, &vanishing_polynomial);
-        let r_hat = multiply_by_x_power(&r, (self.m + 2 - 2u64.pow(f.kappa)) as usize);
+        let r_hat = multiply_by_x_power(&r, (self.m + 2 - 2u32.pow(f.kappa)) as usize);
         let c_b = inner_product_with_polynomial(&tree_node.vector, &lagrange_polynomials);
-        let c_hat_b = multiply_by_x_power(&c_b, (self.m - 2u64.pow(f.kappa)) as usize);
+        let c_hat_b = multiply_by_x_power(&c_b, (self.m - 2u32.pow(f.kappa)) as usize);
         Proof {
             h_b: self.evaluate_at_g1_tau(&h_b),
             r: self.evaluate_at_g1_tau(&r),
@@ -117,12 +117,12 @@ impl UnvariateVectorTreeCommitment {
         }
     }
 
-    pub fn verify_opening(&self, c: &Commitment, f: &Function, y: Field, pi: Proof) -> bool {
-        let cond3_lhs = Bls12_381::pairing(pi.r, self.public_parameters.g2_tau_powers[(self.m + 2 - 2u64.pow(f.kappa)) as usize]);
+    pub fn verify_opening(&self, c: &Commitment, f: &Function, y: Field, pi: &Proof) -> bool {
+        let cond3_lhs = Bls12_381::pairing(pi.r, self.public_parameters.g2_tau_powers[(self.m + 2 - 2u32.pow(f.kappa)) as usize]);
         let cond3_rhs = Bls12_381::pairing(pi.r_hat, G2::generator());
         assert_eq!(cond3_lhs, cond3_rhs);
 
-        let cond4_lhs = Bls12_381::pairing(pi.c_b, self.public_parameters.g2_tau_powers[(self.m - 2u64.pow(f.kappa)) as usize]);
+        let cond4_lhs = Bls12_381::pairing(pi.c_b, self.public_parameters.g2_tau_powers[(self.m - 2u32.pow(f.kappa)) as usize]);
         let cond4_rhs = Bls12_381::pairing(pi.c_hat_b, G2::generator());
         assert_eq!(cond4_lhs, cond4_rhs);
 
@@ -200,7 +200,7 @@ impl UnvariateVectorTreeCommitment {
                     .step_by(2)
                     .collect();
                 if s == 0 {
-                    assert_eq!(child_roots_of_unity, calculate_roots_of_unity(self.m / 2u64.pow(j)));
+                    assert_eq!(child_roots_of_unity, calculate_roots_of_unity(self.m / 2u32.pow(j)));
                 }
                 tree.insert(b, TreeNode { vector: child_vector, roots_of_unity: child_roots_of_unity });
             }
@@ -218,9 +218,9 @@ impl UnvariateVectorTreeCommitment {
         let vanishing_polynomial = calculate_vanishing_polynomial(roots_of_unity);
         let omega_sr = -vanishing_polynomial.coeffs[0];
 
-        let s = vector.iter().fold(0, |acc, x| acc * 2 + *x as u64);
-        let r = self.m / 2u64.pow(j + 1);
-        assert_eq!(omega_sr, self.roots_of_unity[0].pow([s * r]));
+        let s = vector.iter().fold(0, |acc, x| acc * 2 + *x as u32);
+        let r = self.m / 2u32.pow(j + 1);
+        assert_eq!(omega_sr, self.roots_of_unity[0].pow([(s * r) as u64]));
         omega_sr
     }
 }
