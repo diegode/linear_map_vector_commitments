@@ -18,8 +18,6 @@ pub struct PublicParameters {
 }
 
 pub struct Commitment {
-    pub c: G1,
-    pub v: Vec<Field>,
     tree: HashMap<Vec<u32>, TreeNode>,
 }
 
@@ -93,10 +91,7 @@ impl MultivariateVectorTreeCommitment {
     pub fn commit(&self, v: &Vec<Field>) -> Commitment {
         assert_eq!(v.len(), (self.k * self.alphabet_size.pow(self.nu)) as usize);
         let tree = self.build_vector_tree(v);
-        let c = tree.get(&vec![]).unwrap().c;
         Commitment {
-            c,
-            v: v.clone(),
             tree,
         }
     }
