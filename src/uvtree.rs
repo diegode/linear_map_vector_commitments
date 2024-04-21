@@ -18,10 +18,10 @@ pub struct PublicParameters {
 pub struct TreeNode {
     vector: Vec<Field>,
     roots_of_unity: Vec<Field>,
+    c: G1,
 }
 
 pub struct Commitment {
-    pub c: G1,
     tree: HashMap<Vec<bool>, TreeNode>,
 }
 
@@ -74,10 +74,8 @@ impl UnvariateVectorTreeCommitment {
     pub fn commit(&self, v: Vec<Field>, kappa: u32, nu: u32) -> Commitment {
         assert_eq!(v.len(), self.m as usize);
         assert_eq!(self.m, 2u32.pow(kappa + nu + 1));
-        let c = self.commit_in_g1(&v);
         let tree = self.build_vector_tree(&v, nu);
         Commitment {
-            c,
             tree,
         }
     }
@@ -94,7 +92,7 @@ impl UnvariateVectorTreeCommitment {
             let k_bj = Field::one() / (omega_sr * Field::from(2));
             let left_child = c.tree.get(&[b_j.clone(), vec![false]].concat()).unwrap();
             let right_child = c.tree.get(&[b_j.clone(), vec![true]].concat()).unwrap();
-            let h_bj = (self.calculate_g1_commitment(&left_child) - self.calculate_g1_commitment(&right_child)) * k_bj;
+            let h_bj = (left_child.c - right_child.c) * k_bj;
             h_b_prefixes.push(h_bj);
         }
 
@@ -139,7 +137,8 @@ impl UnvariateVectorTreeCommitment {
         let cond2_rhs = Bls12_381::pairing(pi.r, self.public_parameters.g2_tau_powers[1]) + Bls12_381::pairing(pi.h_b, vanishing_at_tau);
         assert_eq!(cond2_lhs, cond2_rhs);
 
-        let cond1_lhs = Bls12_381::pairing(c.c - pi.c_b, G2::generator());
+        let root_commitment = c.tree.get(&vec![]).unwrap().c;
+        let cond1_lhs = Bls12_381::pairing(root_commitment - pi.c_b, G2::generator());
         let mut cond1_rhs = PairingOutput::zero();
         for j in 0..=f.nu {
             let b_jp1 = number_to_bin_vector(f.s, j + 1);
@@ -185,7 +184,8 @@ impl UnvariateVectorTreeCommitment {
         let mut tree: HashMap<Vec<bool>, TreeNode> = HashMap::new();
         tree.insert(vec![], TreeNode {
             vector: v.clone(),
-            roots_of_unity: self.roots_of_unity.clone()
+            roots_of_unity: self.roots_of_unity.clone(),
+            c: self.commit_in_g1(&v),
         });
         for j in 1..=(nu + 1) {
             for s in 0..2usize.pow(j) {
@@ -202,7 +202,13 @@ impl UnvariateVectorTreeCommitment {
                 if s == 0 {
                     assert_eq!(child_roots_of_unity, calculate_roots_of_unity(self.m / 2u32.pow(j)));
                 }
-                tree.insert(b, TreeNode { vector: child_vector, roots_of_unity: child_roots_of_unity });
+                let lagrange_polynomials = calculate_lagrange_polynomials(&child_roots_of_unity);
+                let child_commitment = self.evaluate_at_g1_tau(&inner_product_with_polynomial(&child_vector, &lagrange_polynomials));
+                tree.insert(b, TreeNode {
+                    vector: child_vector,
+                    roots_of_unity: child_roots_of_unity,
+                    c: child_commitment,
+                });
             }
         }
         tree

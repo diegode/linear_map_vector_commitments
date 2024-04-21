@@ -4,15 +4,11 @@ use ark_bls12_381::{Bls12_381, Fr as Field, G1Projective as G1, G2Projective as 
 use ark_ec::{Group, pairing::Pairing};
 use ark_ec::pairing::PairingOutput;
 use ark_ff::{Field as OtherField, One, Zero};
-use ark_poly::DenseMVPolynomial;
-use ark_poly::multivariate::{SparsePolynomial, SparseTerm, Term};
 use ark_poly::univariate::DensePolynomial;
 
 use crate::lvc;
 use crate::lvc::LinearMapVectorCommitment;
 use crate::vc::*;
-
-type Polynomial = SparsePolynomial<Field, SparseTerm>;
 
 pub struct PublicParameters {
     tensored_tau_r: Vec<G1>,
@@ -117,17 +113,6 @@ impl MultivariateVectorTreeCommitment {
         let c_hat = inner_product_g1(&tau_product_power_times_r, &leaf_commitment.a);
 
         // TODO this is work in progress
-        // let mut polynomial = Polynomial::from_coefficients_slice(
-        //     (self.nu + self.k) as usize, &vec![(Field::one(), SparseTerm::new(vec![]))]);
-        // for i in 0..self.lagrange_polynomials.len() {
-        //     let l = &self.lagrange_polynomials[i];
-        //     for j in 0..l.coeffs.len() {
-        //         let term = SparseTerm::new(vec![(i, j)]);
-        //         let term_coeff = l.coeffs[j];
-        //         polynomial = Self::multiply_polynomials(&polynomial,
-        //                                                 &Polynomial::from_coefficients_slice(1, &vec![(term_coeff, term)]));
-        //     }
-        // }
 
         Proof {
             internal_proof: self.internal_lvc.open(leaf_commitment, &f.f, y),
@@ -159,23 +144,6 @@ impl MultivariateVectorTreeCommitment {
         assert_eq!(cond_path_lhs, cond_path_rhs);
 
         true
-    }
-
-    fn multiply_polynomials(cur: &Polynomial, other: &Polynomial) -> Polynomial {
-        if cur.is_zero() || other.is_zero() {
-            Polynomial::zero()
-        } else {
-            let mut result_terms = Vec::new();
-            for (cur_coeff, cur_term) in cur.terms.iter() {
-                for (other_coeff, other_term) in other.terms.iter() {
-                    let mut term: Vec<(usize, usize)> = cur_term.iter().cloned().collect();
-                    let other: Vec<(usize, usize)> = other_term.iter().cloned().collect();
-                    term.extend(other);
-                    result_terms.push((*cur_coeff * *other_coeff, SparseTerm::new(term)));
-                }
-            }
-            Polynomial::from_coefficients_slice(cur.num_vars, result_terms.as_slice())
-        }
     }
 
     fn build_vector_tree(&self, v: &Vec<Field>) -> HashMap<Vec<u32>, TreeNode> {

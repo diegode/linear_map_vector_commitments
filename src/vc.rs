@@ -3,7 +3,8 @@ use std::ops::Mul;
 use ark_bls12_381::{Fr as Field, G1Projective as G1, G2Projective as G2};
 use ark_ec::Group;
 use ark_ff::{FftField, One, Zero};
-use ark_poly::{DenseUVPolynomial, Polynomial, polynomial::univariate::DensePolynomial};
+use ark_poly::{DenseMVPolynomial, DenseUVPolynomial, Polynomial, polynomial::univariate::DensePolynomial};
+use ark_poly::multivariate::{SparsePolynomial, SparseTerm, Term};
 use ark_poly::univariate::DenseOrSparsePolynomial;
 use ark_std::UniformRand;
 
@@ -167,4 +168,51 @@ pub fn number_to_digits_vector(s: u32, j: u32, base: u32) -> Vec<u32> {
         v.push(0);
     }
     v
+}
+
+fn map_uv_to_mv_polynomial(uv_poly: &DensePolynomial<Field>, num_vars: usize, var_index: usize) -> SparsePolynomial<Field, SparseTerm> {
+    let mut terms = vec![];
+    for j in 0..uv_poly.coeffs.len() {
+        let term = SparseTerm::new(vec![(var_index, j)]);
+        terms.push((uv_poly.coeffs[j], term));
+    }
+    SparsePolynomial::from_coefficients_slice(num_vars, &terms)
+}
+
+fn calculate_interpolation_vector(lagrange_polynomials: &Vec<DensePolynomial<Field>>, nu: u32, k: u32) -> Vec<SparsePolynomial<Field, SparseTerm>> {
+    let num_vars = (nu + k) as usize;
+    let mut polynomials = vec![];
+    for i in 0..lagrange_polynomials.len() {
+        let l = map_uv_to_mv_polynomial(&lagrange_polynomials[i], num_vars, i);
+        polynomials.push(l);
+    }
+    // TODO
+    polynomials
+}
+
+pub fn calculate_interpolation_polynomial(v: &Vec<Field>, lagrange_polynomials: &Vec<DensePolynomial<Field>>,
+                                          alphabet_size: u32, nu: u32, k: u32) -> SparsePolynomial<Field, SparseTerm> {
+    assert_eq!(v.len(), (k * alphabet_size.pow(nu)) as usize);
+    let mut polynomial = SparsePolynomial::from_coefficients_slice(
+        (nu + k) as usize, &vec![(Field::one(), SparseTerm::new(vec![]))]);
+    // TODO calculate_interpolation_vector(lagrange_polynomials, nu, k);
+    polynomial
+}
+
+pub fn multiply_mv_polynomials(cur: &SparsePolynomial<Field, SparseTerm>,
+                           other: &SparsePolynomial<Field, SparseTerm>) -> SparsePolynomial<Field, SparseTerm> {
+    if cur.is_zero() || other.is_zero() {
+        SparsePolynomial::zero()
+    } else {
+        let mut result_terms = Vec::new();
+        for (cur_coeff, cur_term) in cur.terms.iter() {
+            for (other_coeff, other_term) in other.terms.iter() {
+                let mut term: Vec<(usize, usize)> = cur_term.iter().cloned().collect();
+                let other: Vec<(usize, usize)> = other_term.iter().cloned().collect();
+                term.extend(other);
+                result_terms.push((*cur_coeff * *other_coeff, SparseTerm::new(term)));
+            }
+        }
+        SparsePolynomial::from_coefficients_slice(cur.num_vars, result_terms.as_slice())
+    }
 }

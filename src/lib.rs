@@ -8,11 +8,12 @@ mod mvtree;
 mod tests {
     use ark_bls12_381::Fr as Field;
     use ark_ff::One;
+    use ark_poly::Polynomial;
     use crate::lvc::LinearMapVectorCommitment;
     use crate::{mvtree, uvtree};
     use crate::mvtree::MultivariateVectorTreeCommitment;
     use crate::uvtree::UnvariateVectorTreeCommitment;
-    use crate::vc::number_to_bin_vector;
+    use crate::vc::{calculate_interpolation_polynomial, calculate_lagrange_polynomials, number_to_bin_vector};
 
     #[test]
     fn test_lvc() {
@@ -60,5 +61,16 @@ mod tests {
         let n = 4;
         let v = number_to_bin_vector(n, 3);
         assert_eq!(v, vec![false, false, true]);
+    }
+
+    #[test]
+    fn test_calculate_interpolation_polynomial() {
+        let v = vec![Field::from(1), Field::from(2), Field::from(3), Field::from(4)];
+        let lagrange_polynomials = calculate_lagrange_polynomials(&vec![Field::from(0), Field::from(1)]);
+        let p = calculate_interpolation_polynomial(&v, &lagrange_polynomials, 2, 2, 1);
+        assert_eq!(p.evaluate(&vec![Field::from(0), Field::from(0)]), Field::from(1));
+        assert_eq!(p.evaluate(&vec![Field::from(1), Field::from(0)]), Field::from(2));
+        assert_eq!(p.evaluate(&vec![Field::from(0), Field::from(1)]), Field::from(3));
+        assert_eq!(p.evaluate(&vec![Field::from(1), Field::from(1)]), Field::from(4));
     }
 }
