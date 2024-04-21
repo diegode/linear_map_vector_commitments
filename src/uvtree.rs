@@ -105,6 +105,7 @@ impl UnvariateVectorTreeCommitment {
         let r_hat = multiply_by_x_power(&r, (self.m + 2 - 2u32.pow(f.kappa)) as usize);
         let c_b = inner_product_with_polynomial(&tree_node.vector, &lagrange_polynomials);
         let c_hat_b = multiply_by_x_power(&c_b, (self.m - 2u32.pow(f.kappa)) as usize);
+        assert_eq!(self.evaluate_at_g1_tau(&c_b), tree_node.c);
         Proof {
             h_b: self.evaluate_at_g1_tau(&h_b),
             r: self.evaluate_at_g1_tau(&r),
@@ -212,11 +213,6 @@ impl UnvariateVectorTreeCommitment {
             }
         }
         tree
-    }
-
-    fn calculate_g1_commitment(&self, tree_node: &TreeNode) -> G1 {
-        let lagrange_polynomials = calculate_lagrange_polynomials(&tree_node.roots_of_unity);
-        self.evaluate_at_g1_tau(&inner_product_with_polynomial(&tree_node.vector, &lagrange_polynomials))
     }
 
     fn calculate_omega_sr(&self, c: &Commitment, vector: &Vec<bool>, j: u32) -> Field {
