@@ -104,7 +104,7 @@ impl UnvariateVectorTreeCommitment {
         let (h_b, r) = calculate_h_and_r(&tree_node.vector, &f.f, &lagrange_polynomials, y, &vanishing_polynomial);
         let r_hat = multiply_by_x_power(&r, (self.m + 2 - 2u32.pow(f.kappa)) as usize);
         let c_b = inner_product_with_polynomial(&tree_node.vector, &lagrange_polynomials);
-        let c_hat_b = multiply_by_x_power(&c_b, (self.m - 2u32.pow(f.kappa)) as usize);
+        let c_hat_b = multiply_by_x_power(&c_b, (self.m + 1 - 2u32.pow(f.kappa)) as usize);
         assert_eq!(self.evaluate_at_g1_tau(&c_b), tree_node.c);
         Proof {
             h_b: self.evaluate_at_g1_tau(&h_b),
@@ -121,7 +121,7 @@ impl UnvariateVectorTreeCommitment {
         let cond3_rhs = Bls12_381::pairing(pi.r_hat, G2::generator());
         assert_eq!(cond3_lhs, cond3_rhs);
 
-        let cond4_lhs = Bls12_381::pairing(pi.c_b, self.public_parameters.g2_tau_powers[(self.m - 2u32.pow(f.kappa)) as usize]);
+        let cond4_lhs = Bls12_381::pairing(pi.c_b, self.public_parameters.g2_tau_powers[(self.m + 1 - 2u32.pow(f.kappa)) as usize]);
         let cond4_rhs = Bls12_381::pairing(pi.c_hat_b, G2::generator());
         assert_eq!(cond4_lhs, cond4_rhs);
 
